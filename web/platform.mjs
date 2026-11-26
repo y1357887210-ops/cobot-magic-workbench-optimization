@@ -113,19 +113,33 @@ function statusStrip(view){
   const unknown = Object.entries(view.components).filter(([,v])=>v.status==='UNKNOWN');
   return '<div class="status-strip"><span class="status-mark">↗</span><div><h2>'+ (view.ownership.status==='ACTIVE'?'已有任务占用设备控制权':modelsOff?'状态已同步，模型当前未加载':unknown.length?'状态已同步，部分设备条件待核对':'当前状态已同步')+'</h2><p>'+(view.ownership.status==='ACTIVE'?'在原工作台查看当前任务；其他访问端共用同一设备控制权。':modelsOff?'可进入工作台选择并显式加载模型。模型未加载是当前状态，不属于连接故障。':'软件版本、启动会话与无运动验收分别核对；实际执行以工作台的实时准入为准。')+'</p></div><span class="strip-end">只读观测</span></div>';
 }
+function connectPipeline(connectState){
+  const cs = object(connectState);
+  const stages = Array.isArray(cs.stages) ? cs.stages : [];
+  if(!stages.length || cs.status === 'IDLE') return '';
+  const cls = cs.status === 'READY' ? 'connect-banner ready' : cs.status === 'BLOCKED' ? 'connect-banner blocked' : 'connect-banner running';
+  const headline = cs.status === 'READY' ? '4090 ↔ AgileX 链路已打通（未自动加载模型或解除 STOP）' : cs.status === 'BLOCKED' ? '链路打通受阻：' + escapeHTML(cs.summary_code || 'UNKNOWN') : '正在执行四阶段一键连接…';
+  return '<div class="'+cls+'"><div class="connect-banner-head"><strong>'+headline+'</strong></div><div class="connect-stages">'+
+    stages.map(st => '<div class="connect-stage '+escapeHTML(String(st.status || 'PENDING').toLowerCase())+'"><div class="connect-stage-top"><span>0'+escapeHTML(st.id)+'</span><span>'+escapeHTML(st.status === 'PASSED' ? '通过' : st.status === 'BLOCKED' ? '受阻' : st.status === 'RUNNING' ? '执行中' : '等待')+'</span></div><strong>'+escapeHTML(st.title)+'</strong><small>'+escapeHTML(st.detail || st.reason_code || '')+'</small></div>').join('')+
+    '</div></div>';
+}
 function topology(view){
   const robot = view.components.robot_link;
   const pcRoute = view.client ? (view.facadeOnline ? 'SSH 网关已连接' : 'SSH 通路待确认'):'浏览器访问';
-  return '<section class="panel" aria-labelledby="topology-title"><div class="panel-header"><div><h2 id="topology-title">系统链路</h2><p>页面、模型与控制后台统一由 4090 管理</p></div><span class="minor">单一设备控制权</span></div><div class="topology">'+
+  const connectBusy = view.connectState?.status === 'RUNNING';
+  const connectBtn = '<button id="connect-robot-button" class="button '+(view.live ? 'button-secondary' : 'button-primary')+'" type="button" data-action="connect-robot"'+(connectBusy ? ' disabled' : '')+'>'+(connectBusy ? '正在打通链路…' : view.live ? '↻ 重新校验连接' : '⚡ 一键连接机械臂')+'</button>';
+  return '<section class="panel" aria-labelledby="topology-title"><div class="panel-header"><div><h2 id="topology-title">系统链路</h2><p>页面、模型与控制后台统一由 4090 管理</p></div><div class="panel-actions">'+connectBtn+'</div></div><div class="topology">'+
   '<article class="node"><div class="node-header"><span class="node-number" data-name=" · PC">01</span>'+pill('OBSERVED','页面已打开')+'</div><h3>PC 访问端</h3><p class="node-description">浏览器与 SSH 入口</p><div class="node-fields"><div class="node-field"><span>访问方式</span><strong>'+escapeHTML(pcRoute)+'</strong></div><div class="node-field"><span>网页资源</span><strong>4090 服务端</strong></div><div class="node-field"><span>本地模型</span><strong>无需复制</strong></div></div></article>'+
   '<div class="connector" aria-hidden="true"><span>SSH</span><span class="connector-line"></span></div>'+
   '<article class="node central"><div class="node-header"><span class="node-number" data-name=" · 4090">02</span>'+pill(view.facadeOnline?'READY':'UNKNOWN',view.facadeOnline?'状态服务在线':'状态服务未知')+'</div><h3>4090 中央服务</h3><p class="node-description">网页 · 模型权重 · 控制后台源码</p><div class="node-fields"><div class="node-field"><span>实际主机</span><strong>'+value(view.boot.host)+'</strong></div><div class="node-field"><span>任务后台</span><strong>'+ (view.live?'当前可达':'当前不可确认')+'</strong></div><div class="node-field"><span>设备控制权</span><strong>'+escapeHTML(labels[view.ownership.status])+'</strong></div></div></article>'+
   '<div class="connector" aria-hidden="true"><span>设备链路</span><span class="connector-line"></span></div>'+
-  '<article class="node"><div class="node-header"><span class="node-number" data-name=" · AgileX">03</span>'+pill(robot.status)+'</div><h3>AgileX 设备端</h3><p class="node-description">设备代理 · 相机 · CAN</p><div class="node-fields"><div class="node-field"><span>共享采集</span><strong>'+escapeHTML(labels[view.components.hub.status])+'</strong></div><div class="node-field"><span>USB 身份</span><strong>'+ (view.components.storage.verified?value(view.components.storage.uuid):'尚未核验')+'</strong></div><div class="node-field"><span>启动会话</span><strong>'+escapeHTML(short(view.boot.robot_boot_id))+'</strong></div></div></article></div><div class="topology-footnote"><span>当前来源 <strong>/platform/status</strong></span><span>设备端保留实际硬件代理</span><span>SSH 连接与执行准入独立判断</span></div></section>';
+  '<article class="node"><div class="node-header"><span class="node-number" data-name=" · AgileX">03</span>'+pill(robot.status)+'</div><h3>AgileX 设备端</h3><p class="node-description">设备代理 · 相机 · CAN</p><div class="node-fields"><div class="node-field"><span>共享采集</span><strong>'+escapeHTML(labels[view.components.hub.status])+'</strong></div><div class="node-field"><span>USB 身份</span><strong>'+ (view.components.storage.verified?value(view.components.storage.uuid):'尚未核验')+'</strong></div><div class="node-field"><span>启动会话</span><strong>'+escapeHTML(short(view.boot.robot_boot_id))+'</strong></div></div></article></div>'+connectPipeline(view.connectState)+'<div class="topology-footnote"><span>当前来源 <strong>/platform/status</strong></span><span>设备端保留实际硬件代理</span><span>SSH 连接与执行准入独立判断</span></div></section>';
 }
 function componentList(view){
   const descriptions = {robot_link:'4090 到既有设备服务的当前连接',hub:'复用既有相机与关节采集生产者',shared_runner:'共享执行运行器的当前准入状态',v2_runner:'FP32 + RTC 路线的运行器状态'};
-  return '<section class="panel"><div class="panel-header"><div><h2>运行条件</h2><p>设备链接与执行绑定分别读取</p></div><span class="minor">当前快照</span></div><div class="component-list">'+['robot_link','hub','shared_runner','v2_runner'].map((key,index)=>'<div class="component-row"><span class="component-index">0'+(index+1)+'</span><div><div class="component-label">'+componentNames[key]+'</div><div class="component-description">'+descriptions[key]+'</div></div>'+pill(view.components[key].status)+'</div>').join('')+'</div></section>';
+  const armMode = view.armMode || 'dual';
+  const armTabs = [['dual','双臂协同'],['left','单左臂'],['right','单右臂']].map(([id,lbl])=>'<button type="button" class="arm-chip'+(armMode===id?' active':'')+'" data-arm-mode="'+id+'">'+lbl+'</button>').join('');
+  return '<section class="panel"><div class="panel-header"><div><h2>运行条件</h2><p>设备链接与执行绑定分别读取</p></div><div class="arm-mode-group" role="group" aria-label="单双臂构型">'+armTabs+'</div></div><div class="component-list">'+['robot_link','hub','shared_runner','v2_runner'].map((key,index)=>'<div class="component-row"><span class="component-index">0'+(index+1)+'</span><div><div class="component-label">'+componentNames[key]+'</div><div class="component-description">'+descriptions[key]+'</div></div>'+pill(view.components[key].status)+'</div>').join('')+'</div></section>';
 }
 function modelsPanel(view){
   return '<section class="panel"><div class="panel-header"><div><h2>模型实例</h2><p>此处只读取已加载状态</p></div></div><div class="card-body"><div class="model-grid">'+Object.entries(view.models).map(([name,model])=>'<article class="model-slot"><div class="model-slot-header"><h3>'+name+'</h3>'+pill(model.status)+'</div><div class="model-step"><span>STEP</span>'+(model.step===null?'—':model.step)+'</div><div class="model-hint">'+(model.status==='OFF'?'可在工作台显式加载':model.status==='UNKNOWN'?'无可确认的实时实例':'服务端报告的当前实例')+'</div></article>').join('')+'</div><p class="inline-note">加载、释放与任务参数统一在原工作台；页面连接恢复不会自动重新加载模型。</p></div></section>';
@@ -167,14 +181,14 @@ const tabMeta = {
   diagnostics:['03','状态诊断','从当前阻挡追溯实际条件，历史失败单独保留。']
 };
 export function startUI(document, environment = globalThis){
-  const state = {snapshot:null,receivedAt:null,health:null,healthReceivedAt:null,error:null,client:null,lastBoot:null,comparisonBoot:null,polling:false,stopped:false,timer:null,abort:null,lastRender:null,lastAnnouncement:null};
+  const state = {snapshot:null,receivedAt:null,health:null,healthReceivedAt:null,error:null,client:null,connectState:null,armMode:'dual',lastBoot:null,comparisonBoot:null,polling:false,stopped:false,timer:null,abort:null,lastRender:null,lastAnnouncement:null};
   const now = () => environment.performance.now();
   const content = document.getElementById('content');
   const refreshButton = document.getElementById('refresh-button');
   const workbenchLink = document.getElementById('workbench-link');
   const currentTab = () => Object.hasOwn(tabMeta,environment.location.hash.slice(1)) ? environment.location.hash.slice(1):'overview';
   function update(){
-    const view = deriveView(state.snapshot,{now:now(),receivedAt:state.receivedAt,transportError:state.error,health:state.health,healthReceivedAt:state.healthReceivedAt,previousBoot:state.comparisonBoot,client:state.client});
+    const view = {...deriveView(state.snapshot,{now:now(),receivedAt:state.receivedAt,transportError:state.error,health:state.health,healthReceivedAt:state.healthReceivedAt,previousBoot:state.comparisonBoot,client:state.client}),connectState:state.connectState,armMode:state.armMode};
     const tab = currentTab();
     const meta = tabMeta[tab];
     document.getElementById('page-title').textContent = meta[1];
@@ -235,6 +249,25 @@ export function startUI(document, environment = globalThis){
       if(!state.stopped){update();state.timer=environment.setTimeout(poll,POLL_INTERVAL_MS);}
     }
   }
+  async function triggerOneClickConnect(){
+    state.connectState = {status:'RUNNING',stages:[{id:1,title:'网口与 SSH 探测',status:'RUNNING',detail:'正在请求 /platform/connect'},{id:2,title:'USB 物理核验',status:'PENDING',detail:''},{id:3,title:'会话与源码绑定',status:'PENDING',detail:''},{id:4,title:'代理 / Hub / 隧道',status:'PENDING',detail:''}]};
+    update();
+    try{
+      const resp = await environment.fetch('/platform/connect',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Tiger-Token':'platform-connect'},body:JSON.stringify({arm_mode:state.armMode})});
+      const data = await resp.json();
+      state.connectState = data && Array.isArray(data.stages) ? data : {status:'BLOCKED',summary_code:data?.error_code || 'HTTP_'+resp.status,stages:state.connectState.stages};
+    } catch {
+      state.connectState = {status:'BLOCKED',summary_code:'STATUS_REQUEST_FAILED',stages:state.connectState.stages};
+    }
+    update();
+    poll();
+  }
+  content.addEventListener('click',event=>{
+    const connectEl = event.target.closest('[data-action="connect-robot"]');
+    if(connectEl){ triggerOneClickConnect(); return; }
+    const armEl = event.target.closest('[data-arm-mode]');
+    if(armEl){ state.armMode = armEl.dataset.armMode; update(); }
+  });
   refreshButton.addEventListener('click',poll);
   workbenchLink.addEventListener('click',event=>{if(workbenchLink.getAttribute('aria-disabled')==='true')event.preventDefault();});
   environment.addEventListener('hashchange',update);
