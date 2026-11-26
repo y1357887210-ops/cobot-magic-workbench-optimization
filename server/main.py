@@ -14,6 +14,7 @@ import time
 from urllib.parse import unquote, urlsplit
 import uuid
 
+from .connect_orchestrator import ConnectOrchestrator
 from .contracts import project_status
 from .release_identity import verify_startup_identity
 
@@ -22,7 +23,8 @@ MAX_STATE = 4 * 1024 * 1024
 MAX_PROXY = 256 * 1024 * 1024
 POST_ROUTES = frozenset((
     "/api/jobs", "/api/stop", "/api/v2/speed", "/api/storage/scan",
-    "/api/storage/select", "/api/semantic/replay", "/api/semantic/cancel"))
+    "/api/storage/select", "/api/semantic/replay", "/api/semantic/cancel",
+    "/platform/connect"))
 SCHEMA = "agilex-platform-health-v1"
 
 
@@ -171,6 +173,7 @@ class PlatformServer(ThreadingHTTPServer):
             raise ValueError("web-root must be a directory")
         self.legacy = LegacyClient(legacy_origin, timeout)
         self.cache = StatusCache(self.legacy, cache_ttl)
+        self.connector = ConnectOrchestrator(self.legacy)
         self.release_info = verify_startup_identity(release_manifest, self.web_root,
                                                     expected_manifest_sha256, release_id)
         self.release_id = self.release_info["release_id"]
@@ -235,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
         path, query = target
         if path == "/platform/health":
             return self.reply(200, self.server.health())
+        if path == "/platform/connect/status":
+            return self.reply(200, self.server.connector.snapshot())
         if path == "/platform/status":
             value, age, at, error = self.server.cache.read()
             state = project_status(
@@ -299,10 +304,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(415, {"error_code": "JSON_REQUIRED"})
         try:
             raw = self.rfile.read(size)
-            if len(raw) != size or not isinstance(strict_json(raw), dict):
+            parsed = strict_json(raw)
+            if len(raw) != size or not isinstance(parsed, dict):
                 raise ValueError()
         except (ValueError, UnicodeError, OSError):
             return self.reply(400, {"error_code": "INVALID_JSON_OBJECT"})
+        if path == "/platform/connect":
+            result = self.server.connector.run(token=tokens[0], params=parsed)
+            return self.reply(200, result)
         return self.proxy("POST", path, raw, tokens[0])
 
     def proxy(self, method, target, body=None, token=None):
