@@ -28,6 +28,7 @@ Download and extract `cobot-magic-sdk-windows-x64.zip`, then double-click **Star
 
 * **Phase 4 · 控制中心前端交互升级（`web/platform.mjs`、`web/platform.css`）**：在系统链路面板加入「⚡ 一键连接机械臂」**按钮与 4 阶段实时状态反馈卡片，并在运行条件面板中加入**双臂协同 / 单左臂 / 单右臂构型切换。
 
+* **一键启动脚本（`tools/start_4090_workbench.sh`）**：在 4090 Ubuntu 主机上自动检测端口占用、依次拉起 `lab_stack` 后台（8873）与控制中心（8910）并自动打开浏览器（支持 `--ui-only` 与 `--no-browser`，`Ctrl + C` 干净退出全部进程）。
 * **安全边界保持不变**：自动化连接绝不自动加载模型、不自动解除 `STOP` 锁存、不重放运动或录制指令、不静默覆盖未核验源码，也不降级写入机械臂本地盘。
 
 快速预演与自检命令：
@@ -36,6 +37,9 @@ Download and extract `cobot-magic-sdk-windows-x64.zip`, then double-click **Star
 # 预演机械臂端 DHCP 配置与新主机初始化向导（不修改系统文件）
 bash tools/setup_robot_dhcp.sh --iface eth0 --dry-run
 python3 tools/setup_host_link.py --dry-run
+
+# 在 4090 主机一键启动后台、控制中心并打开浏览器
+bash tools/start_4090_workbench.sh
 
 # 运行全量单元测试与前端 UI 测试
 python3 -B -m unittest discover -s tests -p "test_*.py" -v
